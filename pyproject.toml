@@ -1,0 +1,14 @@
+[project]
+name = "glucowallet"
+version = "0.1.0"
+description = "Fetches data from the Abbott Libre 2 GCM sensor."
+authors = [{ name = "Chris Hannam", email = "ch@chrishannam.co.uk" }]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "requests",
+    "influx-client",
+]
+
+[project.scripts]
+hippocrates = "glucowallet.main:main"

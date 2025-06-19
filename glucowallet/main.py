@@ -2,10 +2,16 @@ import requests
 import json
 import csv
 import os
+import logging
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
 
 from glucowallet.config import load_config
+
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
 
 HOST = "https://api.libreview.io"
 HEADERS = {
@@ -21,19 +27,23 @@ def authenticate(email: str, password: str) -> str:
     login_url = f"{HOST}/llu/auth/login"
     payload = {"email": email, "password": password}
 
-    response = requests.post(login_url, json=payload, headers=HEADERS)
-
-    if response.status_code == 200:
+    try:
+        response = requests.post(login_url, json=payload, headers=HEADERS, timeout=10)
+        response.raise_for_status()
         return response.json()["data"]["authTicket"]["token"]
-    else:
-        raise ValueError(f"Authentication failed: {response.text}")
+    except requests.RequestException as e:
+        logging.error(f"Authentication request failed: {e}")
+        raise
+    except KeyError:
+        logging.error("Authentication response structure unexpected.")
+        raise
 
 
-def fetch_account_data(token: str) -> dict:
+def fetch_account_data(bearer_token: str) -> dict:
     """Fetch user account data using the authentication token."""
     account_url = f"{HOST}/account"
     headers = HEADERS
-    headers["Authorization"] = f"Bearer {token}"
+    headers["Authorization"] = f"Bearer {bearer_token}"
 
     response = requests.get(account_url, headers=headers)
 
@@ -116,38 +126,43 @@ def send_to_influxdb(sensor_reading, config):
     client.close()
 
 
-if __name__ == "__main__":
-    config, filename = load_config()
-    print(f"Config loaded from {filename}")
+def write_to_csv(reading_to_update):
+    """Write LibreView data to CSV. Create the file if it doesn't exist, next time append to the file."""
 
-    try:
-        token = authenticate(
-            config["libre-linkup"]["username"], config["libre-linkup"]["password"]
-        )
-        print("Authentication successful.")
-
-        account = fetch_account_data(token)
-        reading = fetch_reading(token)
-
-        latest_reading = reading["data"][0]
-
-        print("Writing to InfluxDB...")
-        send_to_influxdb(latest_reading, config["influxdb"])
-
-        print("Latest Data:", json.dumps(reading["data"][0], indent=4))
-
-    except Exception as e:
-        raise e
-
-    filename = "glucose_data.csv"
-    file_exists = os.path.isfile(filename)
+    csv_file = "glucose_data.csv"
+    file_exists = os.path.isfile(csv_file)
 
     with open(filename, mode="a", newline="") as csvfile:
         writer = csv.DictWriter(
-            csvfile, fieldnames=latest_reading["glucoseMeasurement"].keys()
+            csvfile, fieldnames=reading_to_update["glucoseMeasurement"].keys()
         )
 
         if not file_exists:
             writer.writeheader()
 
-        writer.writerow(latest_reading["glucoseMeasurement"])
+        writer.writerow(reading_to_update["glucoseMeasurement"])
+
+    logging.info(f"Data appended to {csv_file}")
+
+
+if __name__ == "__main__":
+    config, filename = load_config()
+    print(f"Config loaded from {filename}")
+
+    token = authenticate(
+        config["libre-linkup"]["username"], config["libre-linkup"]["password"]
+    )
+    print("Authentication successful.")
+
+    account = fetch_account_data(token)
+    reading = fetch_reading(token)
+
+    latest_reading = reading["data"][0]
+
+    if "influxdb" in config:
+        print("Writing to InfluxDB...")
+        send_to_influxdb(latest_reading, config["influxdb"])
+
+    write_to_csv(latest_reading)
+
+    print("Latest Data:", json.dumps(reading["data"][0], indent=4))
