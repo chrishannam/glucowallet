@@ -80,46 +80,42 @@ def fetch_reading(token: str) -> dict:
         raise ValueError(f"Failed to fetch account data: {response.text}")
 
 
+def base_point(sensor_reading):
+    """Save pasting the same .tag"""
+    return (
+        Point("libreview_data")
+        .tag("patientId", sensor_reading["patientId"])
+        .tag("sensor_serial_number", sensor_reading["sensor"]["sn"])
+    )
+
+
 def send_to_influxdb(sensor_reading, config):
     """Send LibreView data to InfluxDB."""
     client = InfluxDBClient(url=config["url"], token=config["token"], org=config["org"])
     write_api = client.write_api(write_options=SYNCHRONOUS)
 
     points = [
-        (
-            Point("libreview_data").field(
-                "glucose_level_float",
-                float(sensor_reading["glucoseMeasurement"]["Value"]),
-            )
+        base_point(sensor_reading).field(
+            "glucose_measurement", float(sensor_reading["glucoseMeasurement"]["Value"])
         ),
-        (
-            Point("libreview_data").field(
-                "is_high", float(sensor_reading["glucoseItem"]["isHigh"])
-            )
+        base_point(sensor_reading).field(
+            "is_high", float(sensor_reading["glucoseItem"]["isHigh"])
         ),
-        (
-            Point("libreview_data").field(
-                "is_low", float(sensor_reading["glucoseItem"]["isLow"])
-            )
+        base_point(sensor_reading).field(
+            "is_low", float(sensor_reading["glucoseItem"]["isLow"])
         ),
-        (
-            Point("libreview_data").field(
-                "trend_arrow", float(sensor_reading["glucoseItem"]["TrendArrow"])
-            )
+        base_point(sensor_reading).field(
+            "trend_arrow", float(sensor_reading["glucoseItem"]["TrendArrow"])
         ),
-        (
-            Point("libreview_data").field(
-                "measurement_color",
-                float(sensor_reading["glucoseItem"]["MeasurementColor"]),
-            )
+        base_point(sensor_reading).field(
+            "measurement_color",
+            float(sensor_reading["glucoseItem"]["MeasurementColor"]),
         ),
-        (
-            Point("libreview_data").field(
-                "value_in_mg_per_pl",
-                float(sensor_reading["glucoseItem"]["ValueInMgPerDl"]),
-            )
+        base_point(sensor_reading).field(
+            "value_in_mg_per_pl", float(sensor_reading["glucoseItem"]["ValueInMgPerDl"])
         ),
     ]
+
     write_api.write(bucket=config["bucket"], org=config["org"], record=points)
     print("Data successfully written to InfluxDB.")
 
