@@ -1,0 +1,9 @@
+[influx]
+url = 192.168.0.100:8086
+bucket = sensors
+org = your-org-name
+token = $token!
+
+[libre-linkup]
+username = email@address.com
+password = top-secret-tapo-password

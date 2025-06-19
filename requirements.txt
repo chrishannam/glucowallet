@@ -1,0 +1,2 @@
+influxdb_client
+requests
