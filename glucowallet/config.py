@@ -1,3 +1,7 @@
+"""
+Handle all config settings, mainly credentials, for connecting.
+"""
+
 import logging
 import os
 from configparser import ConfigParser
@@ -17,6 +21,7 @@ CONFIG_FILE_NAME: str = "glucowallet-config.ini"
 
 
 def validate_config(config):
+    """Make sure we have the settings we need."""
     missing = [
         f"{section}.{key}"
         for section, values in config.items()
@@ -48,6 +53,8 @@ def _load_config_from_environment() -> dict:
 
 
 def load_config(filename=None):
+    """Attempt to load from the user's ~/.config/glucowallet/config.ini file, fail over to env variables if there is
+    no file"""
     if not filename:
         filename: Path = HOME / ".config" / CONFIG_FILE_NAME
 
