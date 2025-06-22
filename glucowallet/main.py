@@ -32,8 +32,8 @@ def _get_url(
     url: str,
     method: str = "GET",
     auth_token: str = "",
-    json_payload: dict = {},
-    headers: dict = {},
+    json_payload=None,
+    headers=None,
 ) -> dict:
     """Make a request and return the response JSON, handling errors."""
     merged_headers = headers.copy() if headers else HEADERS.copy()
