@@ -6,9 +6,11 @@ authors = [{ name = "Chris Hannam", email = "ch@chrishannam.co.uk" }]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "requests",
     "influx-client",
+    "requests",
+    "types-influxdb-client",
+    "types-requests",
 ]
 
 [project.scripts]
-hippocrates = "glucowallet.main:main"
+glucowallet = "glucowallet.main:main"

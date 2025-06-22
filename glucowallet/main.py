@@ -1,9 +1,14 @@
+"""
+Runner file for collecting and sending data.
+"""
+
 from configparser import SectionProxy
+import csv
+import logging
+import os
 
 import requests
-import csv
-import os
-import logging
+
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
 
@@ -23,62 +28,84 @@ HEADERS = {
 }
 
 
-def authenticate(email: str, password: str) -> str:
-    """Authenticate with LibreView API and return the Bearer token."""
-    login_url = f"{HOST}/llu/auth/login"
-    payload = {"email": email, "password": password}
+def _get_url(
+    url: str,
+    method: str = "GET",
+    auth_token: str = "",
+    json_payload: dict = {},
+    headers: dict = {},
+) -> dict:
+    """Make a request and return the response JSON, handling errors."""
+    merged_headers = headers.copy() if headers else HEADERS.copy()
+    if auth_token:
+        merged_headers["Authorization"] = f"Bearer {auth_token}"
 
     try:
-        response = requests.post(login_url, json=payload, headers=HEADERS, timeout=10)
+        if method.upper() == "POST":
+            response = requests.post(
+                url, json=json_payload, headers=merged_headers, timeout=10
+            )
+        elif method.upper() == "GET":
+            response = requests.get(url, headers=merged_headers, timeout=10)
+        else:
+            raise ValueError(f"Unsupported HTTP method: {method}")
+
         response.raise_for_status()
-        return response.json()["data"]["authTicket"]["token"]
+        return response.json()
     except requests.RequestException as e:
-        logging.error(f"Authentication request failed: {e}")
+        logging.error("HTTP request failed: %s", e)
+        raise ValueError(f"Failed to fetch data from {url}: {str(e)}") from e
+    except ValueError as e:
+        logging.error(
+            "Response content is not valid JSON or had an unexpected value: %s", e
+        )
         raise
+    except KeyError as e:
+        logging.error("Expected key missing in response: %s", e)
+        raise
+
+
+def authenticate(email: str, password: str) -> str:
+    """Authenticate with LibreView API and return the Bearer token."""
+
+    response = _get_url(
+        url=f"{HOST}/llu/auth/login",
+        method="POST",
+        json_payload={"email": email, "password": password},
+    )
+
+    try:
+        return response["data"]["authTicket"]["token"]
     except KeyError:
-        logging.error("Authentication response structure unexpected.")
+        logging.error("Authentication response structure unexpected: %s", response)
         raise
 
 
 def fetch_account_data(bearer_token: str) -> dict:
     """Fetch user account data using the authentication token."""
     account_url = f"{HOST}/account"
-    headers = HEADERS
-    headers["Authorization"] = f"Bearer {bearer_token}"
-
-    response = requests.get(account_url, headers=headers)
-
-    if response.status_code == 200:
-        return response.json()
-    else:
-        raise ValueError(f"Failed to fetch account data: {response.text}")
+    return _get_url(url=account_url, method="GET", auth_token=bearer_token)
 
 
-def accept_terms(token: str) -> dict:
-    """Fetch user account data using the authentication token."""
-    account_url = f"{HOST}/auth/continue/tou"
-    headers = HEADERS
-    headers["Authorization"] = f"Bearer {token}"
-
-    response = requests.post(account_url, headers=headers)
-
-    if response.status_code == 200:
-        return response.json()
-    else:
-        raise ValueError(f"Failed to fetch account data: {response.text}")
+def accept_terms(terms_token: str) -> dict:
+    """Accept terms of use with token."""
+    return _get_url(
+        url=f"{HOST}/auth/continue/tou", method="POST", auth_token=terms_token
+    )
 
 
-def fetch_reading(token: str) -> dict:
+def fetch_reading(auth_token: str) -> dict:
+    """Fetch user reading using the authentication token."""
     account_url = f"{HOST}/llu/connections"
     headers = HEADERS
-    headers["Authorization"] = f"Bearer {token}"
+    headers["Authorization"] = f"Bearer {auth_token}"
 
-    response = requests.get(account_url, headers=headers)
+    response = requests.get(account_url, headers=headers, timeout=10)
 
     if response.status_code == 200:
         return response.json()
-    else:
-        raise ValueError(f"Failed to fetch account data: {response.text}")
+
+    raise ValueError(f"Failed to fetch account data: {response.text}")
 
 
 def base_point(sensor_reading):
@@ -130,12 +157,13 @@ def send_to_influxdb(sensor_reading: dict, influxdb_config: SectionProxy) -> Non
 
 
 def write_to_csv(reading_to_update):
-    """Write LibreView data to CSV. Create the file if it doesn't exist, next time append to the file."""
+    """Write LibreView data to CSV. Create the file if it doesn't exist,
+    next time append to the file."""
 
     csv_file = "glucose_data.csv"
     file_exists = os.path.isfile(csv_file)
 
-    with open(csv_file, mode="a", newline="") as csvfile:
+    with open(csv_file, mode="a", newline="", encoding="utf-8") as csvfile:
         writer = csv.DictWriter(
             csvfile, fieldnames=reading_to_update["glucoseMeasurement"].keys()
         )
@@ -145,7 +173,7 @@ def write_to_csv(reading_to_update):
 
         writer.writerow(reading_to_update["glucoseMeasurement"])
 
-    logging.info(f"Data appended to {csv_file}")
+    logging.info("Data appended to %s", csv_file)
 
 
 if __name__ == "__main__":

@@ -56,17 +56,16 @@ def load_config(filename=None):
     """Attempt to load from the user's ~/.config/glucowallet/config.ini file, fail over to env
     variables if there is no file"""
     if not filename:
-        filename: Path = HOME / ".config" / CONFIG_FILE_NAME
+        filename = HOME / ".config" / CONFIG_FILE_NAME
 
-    config = ConfigParser()
     config_file = Path(filename)
 
     if not config_file.is_file():
         logger.info("Unable to find config file, trying environment variables")
         # fail over to env variables
-        config = _load_config_from_environment()
-        return config, None
+        return _load_config_from_environment(), None
 
+    config = ConfigParser()
     config.read(filename)
 
     return config, filename
