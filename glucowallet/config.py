@@ -1,4 +1,5 @@
 import logging
+import os
 from configparser import ConfigParser
 from pathlib import Path
 
@@ -15,6 +16,37 @@ HOME: Path = Path.home()
 CONFIG_FILE_NAME: str = "glucowallet-config.ini"
 
 
+def validate_config(config):
+    missing = [
+        f"{section}.{key}"
+        for section, values in config.items()
+        for key, val in values.items()
+        if not val
+    ]
+    if missing:
+        raise EnvironmentError(f"Missing required env variables: {', '.join(missing)}")
+
+
+def _load_config_from_environment() -> dict:
+    """Read LibreLinkUp and InfluxDB credentials from environment variables."""
+    config = {
+        "influx": {
+            "url": os.environ.get("GLUCOWALLET_INFLUXDB_URL"),
+            "bucket": os.environ.get("GLUCOWALLET_INFLUXDB_BUCKET"),
+            "org": os.environ.get("GLUCOWALLET_INFLUXDB_ORG"),
+            "token": os.environ.get("GLUCOWALLET_INFLUXDB_TOKEN"),
+        },
+        "libre-linkup": {
+            "username": os.environ.get("GLUCOWALLET_LINKUP_USERNAME"),
+            "password": os.environ.get("GLUCOWALLET_LINKUP_PASSWORD"),
+        },
+    }
+
+    validate_config(config)
+
+    return config
+
+
 def load_config(filename=None):
     if not filename:
         filename: Path = HOME / ".config" / CONFIG_FILE_NAME
@@ -22,10 +54,12 @@ def load_config(filename=None):
     config = ConfigParser()
     config_file = Path(filename)
 
-    if config_file.is_file():
-        config.read(filename)
-    else:
-        logger.warning("Unable to find config file.")
-        raise FileNotFoundError(f"Failed to find config file: {filename}")
+    if not config_file.is_file():
+        logger.info("Unable to find config file, trying environment variables")
+        # fail over to env variables
+        config = _load_config_from_environment()
+        return config, None
+
+    config.read(filename)
 
     return config, filename

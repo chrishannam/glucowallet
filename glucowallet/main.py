@@ -1,5 +1,6 @@
+from configparser import SectionProxy
+
 import requests
-import json
 import csv
 import os
 import logging
@@ -89,9 +90,13 @@ def base_point(sensor_reading):
     )
 
 
-def send_to_influxdb(sensor_reading, config):
+def send_to_influxdb(sensor_reading: dict, influxdb_config: SectionProxy) -> None:
     """Send LibreView data to InfluxDB."""
-    client = InfluxDBClient(url=config["url"], token=config["token"], org=config["org"])
+    client = InfluxDBClient(
+        url=influxdb_config["url"],
+        token=influxdb_config["token"],
+        org=influxdb_config["org"],
+    )
     write_api = client.write_api(write_options=SYNCHRONOUS)
 
     points = [
@@ -116,7 +121,9 @@ def send_to_influxdb(sensor_reading, config):
         ),
     ]
 
-    write_api.write(bucket=config["bucket"], org=config["org"], record=points)
+    write_api.write(
+        bucket=influxdb_config["bucket"], org=influxdb_config["org"], record=points
+    )
     print("Data successfully written to InfluxDB.")
 
     client.close()
@@ -128,7 +135,7 @@ def write_to_csv(reading_to_update):
     csv_file = "glucose_data.csv"
     file_exists = os.path.isfile(csv_file)
 
-    with open(filename, mode="a", newline="") as csvfile:
+    with open(csv_file, mode="a", newline="") as csvfile:
         writer = csv.DictWriter(
             csvfile, fieldnames=reading_to_update["glucoseMeasurement"].keys()
         )
@@ -160,5 +167,4 @@ if __name__ == "__main__":
         send_to_influxdb(latest_reading, config["influxdb"])
 
     write_to_csv(latest_reading)
-
-    print("Latest Data:", json.dumps(reading["data"][0], indent=4))
+    print("Done.")

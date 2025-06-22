@@ -194,3 +194,7 @@ cython_debug/
 .cursorindexingignore
 
 .idea
+
+glucowallet/glucose_data.csv
+
+.env
