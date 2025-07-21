@@ -20,9 +20,11 @@ logging.basicConfig(
 
 
 HOST = "https://api.libreview.io"
+
 HEADERS = {
+    "accept-encoding": "gzip",
     "Content-Type": "application/json",
-    "Accept": "application/json",
+    "Accept": "application/json, application/xml, multipart/form-data",
     "product": "llu.android",
     "version": "4.7",
 }
@@ -81,6 +83,10 @@ def authenticate(email: str, password: str) -> str:
         raise
 
 
+def get_connections(token):
+    return _get_url(url=f"{HOST}/llu/connections", method="GET", auth_token=token)
+
+
 def fetch_account_data(bearer_token: str) -> dict:
     """Fetch user account data using the authentication token."""
     account_url = f"{HOST}/account"
@@ -98,7 +104,7 @@ def fetch_reading(auth_token: str) -> dict:
     """Fetch user reading using the authentication token."""
     account_url = f"{HOST}/llu/connections"
     headers = HEADERS
-    headers["Authorization"] = f"Bearer {auth_token}"
+    headers["authorization"] = f"Bearer {auth_token}"
 
     response = requests.get(account_url, headers=headers, timeout=10)
 
@@ -185,7 +191,6 @@ if __name__ == "__main__":
     )
     print("Authentication successful.")
 
-    account = fetch_account_data(token)
     reading = fetch_reading(token)
 
     latest_reading = reading["data"][0]
