@@ -6,6 +6,7 @@ from configparser import SectionProxy
 import csv
 import logging
 import os
+import hashlib
 
 import requests
 
@@ -25,8 +26,11 @@ HEADERS = {
     "accept-encoding": "gzip",
     "Content-Type": "application/json",
     "Accept": "application/json, application/xml, multipart/form-data",
-    "product": "llu.android",
-    "version": "4.7",
+    "product": "llu.ios",
+    "version": "4.16.0",
+    "User-Agent": "LibreLink/4.16.0 (iPhone; iOS 17.0; Scale/3.00)",
+    "Connection": "keep-alive",
+    "Cache-Control": "no-cache",
 }
 
 
@@ -67,7 +71,7 @@ def _get_url(
         raise
 
 
-def authenticate(email: str, password: str) -> str:
+def authenticate(email: str, password: str):
     """Authenticate with LibreView API and return the Bearer token."""
 
     response = _get_url(
@@ -77,14 +81,35 @@ def authenticate(email: str, password: str) -> str:
     )
 
     try:
-        return response["data"]["authTicket"]["token"]
+        return response["data"]["authTicket"]["token"], response["data"]["user"]["id"]
     except KeyError:
         logging.error("Authentication response structure unexpected: %s", response)
         raise
 
 
-def get_connections(token):
-    return _get_url(url=f"{HOST}/llu/connections", method="GET", auth_token=token)
+def get_connections(auth_token):
+    """Get available connections for our creds."""
+    return _get_url(url=f"{HOST}/llu/connections", method="GET", auth_token=auth_token)
+
+
+def fetch_graph(auth_token, patient_id):
+    """Fetch graph data for user."""
+    return _get_url(
+        url=f"{HOST}/llu/connections/{patient_id}/graph",
+        method="GET",
+        auth_token=auth_token,
+    )
+
+
+def fetch_logbook(auth_token, patient_id):
+    """Fetch logbook data for user from the endpoint:
+    https://api.libreview.io/llu/connections/{patientId}/logbook
+    """
+    return _get_url(
+        url=f"{HOST}/llu/connections/{patient_id}/logbook",
+        method="GET",
+        auth_token=auth_token,
+    )
 
 
 def fetch_account_data(bearer_token: str) -> dict:
@@ -100,11 +125,13 @@ def accept_terms(terms_token: str) -> dict:
     )
 
 
-def fetch_reading(auth_token: str) -> dict:
+def fetch_reading(auth_token: str, account_id: str) -> dict:
     """Fetch user reading using the authentication token."""
     account_url = f"{HOST}/llu/connections"
     headers = HEADERS
     headers["authorization"] = f"Bearer {auth_token}"
+    # thanks to https://github.com/TA2k/ioBroker.libre/commit/e29c214919ae493d8b2ef92ae395e98435b03179
+    headers["account-id"] = hashlib.sha256(account_id.encode()).hexdigest()
 
     response = requests.get(account_url, headers=headers, timeout=10)
 
@@ -130,28 +157,33 @@ def send_to_influxdb(sensor_reading: dict, influxdb_config: SectionProxy) -> Non
         token=influxdb_config["token"],
         org=influxdb_config["org"],
     )
+
     write_api = client.write_api(write_options=SYNCHRONOUS)
 
+    alarm_rules = sensor_reading.get("alarmRules", {})
+    glucose_measurement = sensor_reading.get("glucoseMeasurement", {})
+    glucose_item = sensor_reading.get("glucoseItem", {})
+
+    # Define fields with cleaner paths
+    fields = {
+        "low_alarm_thmm": float(alarm_rules.get("l", {}).get("thmm", 0)),
+        "high_alarm_thmm": float(alarm_rules.get("h", {}).get("thmm", 0)),
+        "value_in_mg_per_dl": float(glucose_measurement.get("ValueInMgPerDl", 0)),
+        "glucose_trend_arrow": float(glucose_measurement.get("TrendArrow", 0)),
+        "glucose_measurement": float(glucose_measurement.get("Value", 0)),
+        "is_high": float(glucose_item.get("isHigh", False)),
+        "is_low": float(glucose_item.get("isLow", False)),
+        "item_trend_arrow": float(glucose_item.get("TrendArrow", 0)),
+        "measurement_color": float(glucose_item.get("MeasurementColor", 0)),
+        "value_in_mg_per_pl": float(glucose_item.get("ValueInMgPerDl", 0)),
+        "glucose_units": float(glucose_item.get("GlucoseUnits", 0)),
+        "glucose_item_value": float(glucose_item.get("Value", 0)),
+        "glucose_item_type": float(glucose_item.get("type", 0)),
+    }
+
     points = [
-        base_point(sensor_reading).field(
-            "glucose_measurement", float(sensor_reading["glucoseMeasurement"]["Value"])
-        ),
-        base_point(sensor_reading).field(
-            "is_high", float(sensor_reading["glucoseItem"]["isHigh"])
-        ),
-        base_point(sensor_reading).field(
-            "is_low", float(sensor_reading["glucoseItem"]["isLow"])
-        ),
-        base_point(sensor_reading).field(
-            "trend_arrow", float(sensor_reading["glucoseItem"]["TrendArrow"])
-        ),
-        base_point(sensor_reading).field(
-            "measurement_color",
-            float(sensor_reading["glucoseItem"]["MeasurementColor"]),
-        ),
-        base_point(sensor_reading).field(
-            "value_in_mg_per_pl", float(sensor_reading["glucoseItem"]["ValueInMgPerDl"])
-        ),
+        base_point(sensor_reading).field(field_name, value)
+        for field_name, value in fields.items()
     ]
 
     write_api.write(
@@ -186,14 +218,18 @@ if __name__ == "__main__":
     config, filename = load_config()
     print(f"Config loaded from {filename}")
 
-    token = authenticate(
+    token, account_id = authenticate(
         config["libre-linkup"]["username"], config["libre-linkup"]["password"]
     )
     print("Authentication successful.")
 
-    reading = fetch_reading(token)
-
+    # connections = get_connections(token)
+    # accept_terms(token)
+    reading = fetch_reading(token, account_id)
     latest_reading = reading["data"][0]
+    patient_id = latest_reading["patientId"]
+
+    # graph_data = fetch_graph(token, patient_id)
 
     if "influxdb" in config:
         print("Writing to InfluxDB...")
