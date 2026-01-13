@@ -6,4 +6,4 @@ token = $token!
 
 [libre-linkup]
 username = email@address.com
-password = top-secret-tapo-password
+password = top-secret-libre-password

@@ -2,7 +2,6 @@
 Runner file for collecting and sending data.
 """
 
-from configparser import SectionProxy
 import csv
 import logging
 import os
@@ -19,19 +18,22 @@ logging.basicConfig(
 )
 
 
-# def base_point(sensor_reading):
-#     """Save pasting the same .tag"""
-#     return (
-#         Point("libreview_data")
-#         .tag("patientId", sensor_reading["patientId"])
-#         .tag("sensor_serial_number", sensor_reading["sensor"]["sn"])
-#     )
-
-
 def send_to_influxdb(
-    sensor_reading: GlucoseMeasurementWithTrend, influxdb_config: SectionProxy
+    sensor_reading: GlucoseMeasurementWithTrend, influxdb_config: dict
 ) -> None:
     """Send LibreView data to InfluxDB."""
+
+    # Validate required fields
+    required_fields = ["url", "token", "org", "bucket"]
+    missing_fields = [
+        field for field in required_fields if field not in influxdb_config
+    ]
+
+    if missing_fields:
+        raise ValueError(
+            f"Missing required InfluxDB configuration fields: {', '.join(missing_fields)}"
+        )
+
     client = InfluxDBClient(
         url=influxdb_config["url"],
         token=influxdb_config["token"],
@@ -52,7 +54,7 @@ def send_to_influxdb(
     }
 
     points = [
-        Point("freestyle_librexlink").field(field_name, value)
+        Point("freestyle_librelink").field(field_name, value)
         for field_name, value in fields.items()
     ]
 
@@ -88,7 +90,6 @@ if __name__ == "__main__":
     config, filename = load_config()
     print(f"Config loaded from {filename}")
 
-    # libreview_client = LibreViewClient(config["libre-linkup"]["username"], config["libre-linkup"]["password"])
     libre_client = PyLibreLinkUp(
         email=config["libre-linkup"]["username"],
         password=config["libre-linkup"]["password"],
@@ -96,8 +97,6 @@ if __name__ == "__main__":
     libre_client.authenticate()
     print("Authentication successful.")
 
-    # connections = get_connections(token)
-    # accept_terms(token)
     patient_list = libre_client.get_patients()
     latest_glucose = libre_client.latest(patient_identifier=patient_list[0])
 

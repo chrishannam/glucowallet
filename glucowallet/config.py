@@ -68,4 +68,7 @@ def load_config(filename=None):
     config = ConfigParser()
     config.read(filename)
 
-    return config, filename
+    # Convert ConfigParser to dict
+    config_dict = {section: dict(config[section]) for section in config.sections()}
+
+    return config_dict, filename
