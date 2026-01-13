@@ -53,8 +53,8 @@ def _load_config_from_environment() -> dict:
 
 
 def load_config(filename=None):
-    """Attempt to load from the user's ~/.config/glucowallet/glucowallet-config.ini file, fail over to env
-    variables if there is no file"""
+    """Attempt to load from the user's ~/.config/glucowallet/glucowallet-config.ini file,
+    fail over to env variables if there is no file"""
     if not filename:
         filename = HOME / ".config" / CONFIG_FILE_NAME
 

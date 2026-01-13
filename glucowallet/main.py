@@ -8,10 +8,11 @@ import os
 
 from influxdb_client import InfluxDBClient, Point
 from influxdb_client.client.write_api import SYNCHRONOUS
-from pylibrelinkup.models.data import GlucoseMeasurementWithTrend
 
-from glucowallet.config import load_config
+from pylibrelinkup.models.data import GlucoseMeasurementWithTrend
 from pylibrelinkup import PyLibreLinkUp
+from glucowallet.config import load_config
+
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
